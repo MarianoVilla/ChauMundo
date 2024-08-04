@@ -7,6 +7,42 @@
 5. [Step-05: Delete CloudFormation Stack](#step-05-delete-cloudformation-stack)
 6. [Step-06: Delete AWS IAM User for Pipeline](#step-06-delete-aws-iam-user-for-pipeline)
 
+## Architecture
+
+![aws-architecture.png](etc/aws-architecture.png)
+
+### User Interaction
+- A user sends an HTTP request to the Lambda function URL (`DotNetLambdaFunctionUrl`).
+
+### Lambda Function
+- The `DotNetLambdaFunction` handles the HTTP request. It assumes the `DotNetLambdaExecutionRole` IAM role to gain the necessary permissions.
+- It generates a URL and interacts with an S3 bucket (`dotnetcodebucket`), which stores .NET code.
+
+### S3 and Helper Lambda
+- The S3 bucket (`dotnetcodebucket`) stores the .NET code.
+- A helper Lambda function (`HelperS3ObjectsFunction`) manages S3 objects within this bucket, such as creating and deleting objects.
+- The helper Lambda function assumes the `HelperS3ObjectsWriteRole` IAM role to manage these S3 operations.
+
+### IAM Roles
+- `DotNetLambdaExecutionRole`: Provides the necessary permissions for the primary Lambda function.
+- `HelperS3ObjectsWriteRole`: Provides permissions for the helper Lambda function to manage S3 objects.
+
+### Pipeline User for GitHub Actions
+- An IAM user (`PipelineUser`) is used in the GitHub Actions workflow for deploying updates to the Lambda function and uploading the packaged code to the S3 bucket.
+- The workflow includes steps for checking out the code, setting up .NET, installing dependencies, building the project, zipping the Lambda package, configuring AWS credentials, uploading the package to S3, and updating the Lambda function code.
+
+### Flow
+- **User** -> **Lambda Function URL** -> **Lambda Function** -> **S3 Bucket**
+- **Helper Lambda** -> **S3 Bucket** (for management tasks)
+- **Pipeline User** -> **GitHub Actions** -> **S3 Bucket and Lambda Function** (for deployment)
+
+### Clarifications
+- The `App.config` file was removed because AWS Lambda does not support it. For more information, refer to the following links:
+  - [GitHub Issue: AWS Lambda .NET support for App.config](https://github.com/aws/aws-lambda-dotnet/issues/230)
+  - [StackOverflow: App.config in an AWS Lambda function](https://stackoverflow.com/questions/46879797/app-config-in-an-aws-lambda-function)
+
+This architecture ensures that the .NET code is stored securely in an S3 bucket, managed by a helper Lambda function, and updated via a CI/CD pipeline using GitHub Actions with the appropriate permissions.
+
 
 ## Step-01: Prerequisites
 
