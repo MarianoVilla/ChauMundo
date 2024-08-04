@@ -4,10 +4,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace ChauMundo
+namespace ChauMundo.Printers
 {
-    internal interface ICommunicator
+    internal interface IPrinter
     {
-        void Communicate(string Message);
+        void Print(string Message);
     }
 }

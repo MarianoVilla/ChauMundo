@@ -6,11 +6,11 @@ using System.Text;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 
-namespace ChauMundo
+namespace ChauMundo.Printers
 {
-    internal class ConsoleCommunicator : ICommunicator
+    internal class ConsolePrinter : IPrinter
     {
-        public void Communicate(string Message)
+        public void Print(string Message)
         {
             Console.WriteLine(Message);
         }

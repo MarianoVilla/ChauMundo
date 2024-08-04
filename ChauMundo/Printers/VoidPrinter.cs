@@ -4,11 +4,11 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace ChauMundo
+namespace ChauMundo.Printers
 {
-    internal class VoidCommunicator : ICommunicator
+    internal class VoidPrinter : IPrinter
     {
-        public void Communicate(string Message)
+        public void Print(string Message)
         {
             //Do nothing
         }
