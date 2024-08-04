@@ -1,0 +1,6 @@
+@ChauMundo_HostAddress = http://localhost:5133
+
+GET {{ChauMundo_HostAddress}}/hello/
+Accept: application/json
+
+###
