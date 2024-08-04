@@ -1,5 +1,4 @@
-﻿using System.Configuration;
-using ChauMundo.Printers;
+﻿using ChauMundo.Printers;
 
 namespace ChauMundo
 {
@@ -23,37 +22,5 @@ namespace ChauMundo
         private static IHostBuilder CreateHostBuilder(string[] args) =>
             Host.CreateDefaultBuilder(args)
                 .ConfigureWebHostDefaults(webBuilder => { webBuilder.UseStartup<Startup>(); });
-    }
-
-    public class Startup
-    {
-        public void ConfigureServices(IServiceCollection services)
-        {
-            services.AddEndpointsApiExplorer();
-            services.AddSwaggerGen();
-        }
-
-        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
-        {
-            if (env.IsDevelopment())
-            {
-                app.UseSwagger();
-                app.UseSwaggerUI();
-            }
-
-            app.UseHttpsRedirection();
-
-            app.UseRouting();
-
-            app.UseEndpoints(endpoints =>
-            {
-                endpoints.MapGet("/hello", () =>
-                {
-                    string? message = System.Configuration.ConfigurationManager.AppSettings["Message"];
-                    Program.PrintMessage(new DebugPrinter(), message ?? "Default message");
-                    return Results.Ok("Message printed to debug output");
-                });
-            });
-        }
     }
 }
