@@ -1,0 +1,189 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Dotnet Code Bucket with Lambda Cleaner and Writer
+
+Parameters:
+  S3BucketPrefix:
+    Description: Bucket Prefix for .NET code bucket
+    Type: String
+    Default: my-name-is-pepe
+    AllowedPattern: "^[a-z0-9-]{1,47}$"
+    ConstraintDescription: "Prefix must be between 1 and 47 characters long and contain only lowercase letters, numbers, and hyphens."
+  LambdaExecutionRoleName:
+    Description: "The name of the IAM role for the Lambda function"
+    Type: String
+    Default: "DotNetLambdaExecutionRole"
+
+Resources:
+  dotnetcodebucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${S3BucketPrefix}-dotnetcodebucket"
+  
+  HelperS3ObjectsWriteRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Sid: AllowLogging
+                Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: "*"
+              - Sid: S3BucketAccess
+                Effect: Allow
+                Action:
+                  - "s3:ListBucket"
+                  - "s3:GetObject"
+                  - "s3:DeleteObject"
+                  - "s3:DeleteObjectVersion"
+                  - "s3:PutObject"
+                Resource:
+                  - !Sub "arn:aws:s3:::${S3BucketPrefix}-dotnetcodebucket"
+                  - !Sub "arn:aws:s3:::${S3BucketPrefix}-dotnetcodebucket/*"
+  
+  helpers3objectshook:
+    Type: "Custom::S3Objects"
+    Properties:
+      ServiceToken: !GetAtt HelperS3ObjectsFunction.Arn
+      Bucket: !Sub "${S3BucketPrefix}-dotnetcodebucket"
+    DependsOn: dotnetcodebucket
+
+  HelperS3ObjectsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Delete objects from bucket and create my-lambda.zip
+      Handler: index.handler
+      Runtime: python3.9
+      Role: !GetAtt HelperS3ObjectsWriteRole.Arn
+      Timeout: 120
+      Code:
+        ZipFile: |
+          import os
+          import json
+          import cfnresponse
+          import boto3
+          import logging
+          from zipfile import ZipFile
+
+          from botocore.exceptions import ClientError
+          client = boto3.client('s3')
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
+          def handler(event, context):
+            logger.info("Received event: %s" % json.dumps(event))
+            bucket = event['ResourceProperties']['Bucket']
+
+            result = cfnresponse.SUCCESS
+
+            try:
+              if event['RequestType'] == 'Delete':
+                result = delete_objects(bucket)
+              elif event['RequestType'] == 'Create':
+                result = create_zip_and_upload(bucket)
+            except ClientError as e:
+              logger.error('Error: %s', e)
+              result = cfnresponse.FAILED
+
+            cfnresponse.send(event, context, result, {})
+
+          def delete_objects(bucket):
+            paginator = client.get_paginator('list_objects_v2')
+            page_iterator = paginator.paginate(Bucket=bucket)
+            objects = [{'Key': x['Key']} for page in page_iterator for x in page['Contents']]
+            client.delete_objects(Bucket=bucket, Delete={'Objects': objects})
+            return cfnresponse.SUCCESS
+
+          def create_zip_and_upload(bucket):
+            zip_file_path='/tmp/my-lambda.zip'
+            dummy_file_path='/tmp/dummy.txt'
+            with open(dummy_file_path,'w') as dummy_file:
+              dummy_file.write("This is a placeholder text.")
+            with ZipFile(zip_file_path,'w') as zipf:
+              zipf.write(dummy_file_path,arcname='dummy.txt')
+            boto3.client('s3').upload_file(zip_file_path,bucket,'my-lambda.zip')
+          
+            client.upload_file(zip_file_path, bucket, 'my-lambda.zip')
+            return cfnresponse.SUCCESS
+
+  DotNetLambdaExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Ref LambdaExecutionRoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaS3AccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::${S3BucketPrefix}-dotnetcodebucket"
+                  - !Sub "arn:aws:s3:::${S3BucketPrefix}-dotnetcodebucket/*"
+        - PolicyName: LambdaCloudWatchLogsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - arn:aws:logs:*:*:*
+
+  DotNetLambdaFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: 'aws-lambda-dotnet-code'
+      Handler: 'ChauMundo::ChauMundo.LambdaEntryPoint::FunctionHandlerAsync'
+      Runtime: 'dotnet8'
+      Role: !GetAtt DotNetLambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Sub "${S3BucketPrefix}-dotnetcodebucket"
+        S3Key: 'my-lambda.zip'
+      Environment:
+        Variables:
+          ASPNETCORE_ENVIRONMENT: 'Production'
+    DependsOn: HelperS3ObjectsFunction
+
+  DotNetLambdaFunctionUrl:
+    Type: 'AWS::Lambda::Url'
+    Properties:
+      AuthType: NONE
+      TargetFunctionArn: !GetAtt DotNetLambdaFunction.Arn
+
+  DotNetLambdaInvokePermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      FunctionName: !Ref DotNetLambdaFunction
+      Action: 'lambda:InvokeFunctionUrl'
+      Principal: '*'
+      FunctionUrlAuthType: 'NONE'
+
+Outputs:
+  LambdaFunctionUrl:
+    Description: "The URL endpoint of the Lambda function"
+    Value: !GetAtt DotNetLambdaFunctionUrl.FunctionUrl
